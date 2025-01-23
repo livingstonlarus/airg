@@ -1,0 +1,14 @@
+{
+  "name": "airg",
+  "version": "1.0.0",
+  "description": "AI Resume Generator",
+  "scripts": {
+    "build": "tailwindcss -i ./airg/static/src/main.css -o ./airg/static/css/main.css --minify",
+    "watch": "tailwindcss -i ./airg/static/src/main.css -o ./airg/static/css/main.css --watch"
+  },
+  "dependencies": {
+    "autoprefixer": "^10.4.17",
+    "postcss": "^8.4.33",
+    "tailwindcss": "^3.4.1"
+  }
+} 

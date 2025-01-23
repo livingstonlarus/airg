@@ -1,12 +1,20 @@
 from pathlib import Path
-from typing import Dict, Tuple, Optional
-from google import genai
-from playwright.async_api import async_playwright
+from typing import Dict, Tuple, Optional, TypedDict
+import google.generativeai as genai
+from playwright.sync_api import sync_playwright
 import logging
 from datetime import datetime
 import re
+from unidecode import unidecode
+import json
 
 logger = logging.getLogger(__name__)
+
+class DocumentMetadata(TypedDict):
+    applicant_name: str
+    company_name_short: str
+    job_title_short: str
+    resume_title_short: str
 
 class DocumentGeneratorError(Exception):
     """Base exception for document generator errors"""
@@ -16,22 +24,34 @@ class DocumentGenerator:
     # Common prompt instructions
     _COMMON_INSTRUCTIONS = """
         IMPORTANT: 
-        - Return ONLY the raw HTML content
-        - Use EXACTLY the HTML structure provided
-        - Do NOT modify ANY HTML tags or attributes
-        - Do NOT wrap response in markdown code blocks
-        - Start directly with <!DOCTYPE html>
+        - Return ONLY valid JSON
+        - Follow the exact structure requested
+        - Ensure all text values are properly sanitized
+        - Keep shortened versions meaningful and professional
     """
+    
+    _REQUIRED_JSON_FIELDS = {
+        'resume_html', 'cover_letter_html', 
+        'applicant_name', 'company_name_short',
+        'job_title_short', 'resume_title_short'
+    }
 
     def __init__(self, api_key: str):
         if not api_key:
             raise ValueError("API key is required")
             
-        self.client = genai.Client(api_key=api_key, http_options={'api_version': 'v1alpha'})
+        genai.configure(api_key=api_key)
+        self.model = genai.GenerativeModel(
+            model_name='gemini-2.0-flash-thinking-exp',
+            generation_config={'temperature': 0.1}
+        )
         self.base_dir = Path("resume_gen")
         self.base_dir.mkdir(exist_ok=True)
         self.resume_template = Path("resume/resume.html")
         self.letter_template = Path("resume/letter.html")
+        
+        # Initialize metadata
+        self.document_metadata: Optional[DocumentMetadata] = None
         
         # Validate template files exist
         if not self.resume_template.exists():
@@ -41,7 +61,18 @@ class DocumentGenerator:
 
     def _sanitize_filename(self, text: str) -> str:
         """Create a safe filename from text"""
-        return re.sub(r'[^\w\s-]', '', text).strip().replace(' ', '_')
+        # Convert to ASCII, remove diacritics
+        text = unidecode(text)
+        # Replace any non-alphanumeric with underscore
+        text = re.sub(r'[^\w]', '_', text)
+        # Replace multiple underscores with single
+        text = re.sub(r'_+', '_', text)
+        # Strip leading/trailing underscores and convert to lowercase
+        return text.strip('_').lower()
+
+    def _format_timestamp(self) -> str:
+        """Create a compact timestamp YYMMDDHHMMSS"""
+        return datetime.now().strftime("%y%m%d%H%M%S")
 
     def _cleanup_content(self, content: str) -> str:
         """Clean up the content returned by the AI"""
@@ -54,100 +85,230 @@ class DocumentGenerator:
 
     def _create_output_dir(self, job_title: str) -> Path:
         """Create a timestamped output directory for this generation"""
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        safe_job_title = self._sanitize_filename(job_title)
-        dir_name = f"{timestamp}_{safe_job_title}"
+        if not self.document_metadata:
+            raise DocumentGeneratorError("Document metadata not initialized")
+            
+        timestamp = self._format_timestamp()
+        company = self._sanitize_filename(self.document_metadata['company_name_short'])
+        job = self._sanitize_filename(self.document_metadata['job_title_short'])
+        dir_name = f"{timestamp}_{company}_{job}"
+        
+        if not self._validate_filename(dir_name):
+            raise DocumentGeneratorError(
+                f"Generated directory name does not meet requirements: {dir_name}"
+            )
+            
         output_dir = self.base_dir / dir_name
         output_dir.mkdir(exist_ok=True)
         return output_dir
 
     def _get_file_paths(self, output_dir: Path, job_title: str) -> Dict[str, Path]:
         """Get all file paths for a job"""
-        safe_job_title = self._sanitize_filename(job_title)
+        if not self.document_metadata:
+            raise DocumentGeneratorError("Document metadata not initialized")
+            
+        # Use stored metadata for file naming
+        applicant = self._sanitize_filename(self.document_metadata['applicant_name'])
+        job_title = self._sanitize_filename(self.document_metadata['job_title_short'])
+        resume_title = self._sanitize_filename(self.document_metadata['resume_title_short'])
+        
+        # Ensure each component is valid
+        for component in [applicant, job_title, resume_title]:
+            if not self._validate_filename(component):
+                raise DocumentGeneratorError(f"Invalid filename component: {component}")
+        
         return {
-            'resume_html': output_dir / f"Resume_{safe_job_title}.html",
-            'resume_pdf': output_dir / f"Resume_{safe_job_title}.pdf",
-            'letter_html': output_dir / f"Cover_Letter_{safe_job_title}.html",
-            'letter_pdf': output_dir / f"Cover_Letter_{safe_job_title}.pdf"
+            'resume_html': output_dir / f"{applicant}_{resume_title}.html",
+            'resume_pdf': output_dir / f"{applicant}_{resume_title}.pdf",
+            'letter_html': output_dir / f"{applicant}_cover_letter_{job_title}.html",
+            'letter_pdf': output_dir / f"{applicant}_cover_letter_{job_title}.pdf"
         }
 
-    async def generate_documents(self, form_data: Dict[str, str]) -> Tuple[str, str]:
-        """Generate customized resume and cover letter using Gemini API"""
+    def _generate_content(self, prompt: str) -> str:
+        """Generate content using the AI API"""
         try:
-            # Load resume template
-            resume_template = self.resume_template.read_text()
+            logger.info("Making API call to AI service...")
+            response = self.model.generate_content(prompt)
+            logger.info("Received response from AI service")
             
-            # Generate customized resume
-            logger.info("Generating customized resume with Gemini...")
-            customized_resume = await self._generate_content(
-                self._create_resume_prompt(resume_template, form_data),
-                "resume"
-            )
+            if not response.text:
+                logger.error("No response text from API")
+                raise DocumentGeneratorError("No response from API")
             
-            # Generate cover letter
-            logger.info("Generating cover letter with Gemini...")
-            cover_letter = await self._generate_content(
-                self._create_cover_letter_prompt(customized_resume, form_data),
-                "cover letter"
-            )
+            # Log raw response for debugging
+            logger.debug(f"Raw response: {response.text[:500]}...")
             
-            logger.info("Documents generated successfully")
-            return customized_resume, cover_letter
+            # Try to extract JSON from the response
+            text = response.text.strip()
+            # Remove any markdown code block markers
+            text = re.sub(r'^```json\s*', '', text)
+            text = re.sub(r'\s*```$', '', text)
+            # Remove any explanatory text before or after the JSON
+            text = re.sub(r'^[^{]*({.*})[^}]*$', r'\1', text, flags=re.DOTALL)
+            
+            logger.info("Successfully cleaned response")
+            logger.debug(f"Cleaned response: {text[:500]}...")
+            
+            return text
             
         except Exception as e:
-            logger.error(f"Error generating documents: {str(e)}")
+            logger.error(f"Error in _generate_content: {str(e)}", exc_info=True)
+            raise DocumentGeneratorError(f"Error generating content: {str(e)}")
+
+    def generate_documents(self, form_data: Dict[str, str]) -> Tuple[str, str]:
+        """Generate customized resume and cover letter using AI"""
+        try:
+            # Load templates
+            logger.info("Loading templates...")
+            resume_template = self.resume_template.read_text()
+            letter_template = self.letter_template.read_text()
+            logger.info("Templates loaded successfully")
+            
+            # Generate content with a single API call
+            logger.info("Creating unified prompt...")
+            prompt = self._create_unified_prompt(resume_template, letter_template, form_data)
+            logger.debug(f"Prompt length: {len(prompt)} characters")
+            
+            logger.info("Generating documents with AI...")
+            response = self._generate_content(prompt)
+            
+            # Parse and validate the JSON response
+            try:
+                logger.info("Parsing JSON response...")
+                content = json.loads(response)
+                
+                logger.info("Validating JSON structure...")
+                self._validate_json_response(content)
+                
+                # Store metadata for file naming
+                logger.info("Storing document metadata...")
+                self.document_metadata = {
+                    'applicant_name': content['applicant_name'],
+                    'company_name_short': content['company_name_short'],
+                    'job_title_short': content['job_title_short'],
+                    'resume_title_short': content['resume_title_short']
+                }
+                logger.debug(f"Document metadata: {self.document_metadata}")
+                
+                # Validate all generated filenames
+                logger.info("Validating generated filenames...")
+                output_dir = Path("test")  # Temporary path for validation
+                paths = self._get_file_paths(output_dir, "test")
+                for path in paths.values():
+                    if not self._validate_filename(path.name):
+                        logger.error(f"Invalid filename generated: {path.name}")
+                        raise DocumentGeneratorError(
+                            f"Generated filename does not meet requirements: {path.name}"
+                        )
+                
+                logger.info("HTML content generated successfully")
+                return content['resume_html'], content['cover_letter_html']
+                
+            except json.JSONDecodeError as e:
+                logger.error(f"JSON decode error: {str(e)}", exc_info=True)
+                raise DocumentGeneratorError(f"Invalid JSON response from API: {str(e)}")
+            
+        except Exception as e:
+            logger.error(f"Error generating documents: {str(e)}", exc_info=True)
             raise DocumentGeneratorError(f"Failed to generate documents: {str(e)}")
 
-    async def _generate_content(self, prompt: str, doc_type: str) -> str:
-        """Generate content using Gemini API"""
-        try:
-            response = self.client.models.generate_content(
-                model='gemini-2.0-flash-thinking-exp',
-                contents=prompt
-            )
+    def _create_unified_prompt(self, resume_template: str, letter_template: str, form_data: Dict[str, str]) -> str:
+        """Create unified prompt for document generation"""
+        current_date = datetime.now().strftime("%B %d, %Y")
+        salutation = "Mr." if form_data.get('hirer_gender') == 'male' else "Ms."
+        hirer_name = form_data.get('hirer_name', '')
+        
+        additional_context = ""
+        if form_data.get('relevant_experience'):
+            additional_context = f"""
+            Additional Context - Relevant Experience to Highlight:
+            {form_data['relevant_experience']}
+            """
             
-            if not response.candidates[0].content.parts:
-                raise DocumentGeneratorError(f"Failed to generate {doc_type} content: No response from API")
-            
-            content = next(
-                (part.text for part in response.candidates[0].content.parts 
-                 if not getattr(part, 'thought', False)), 
-                None
-            )
-            
-            if not content:
-                raise DocumentGeneratorError(f"Failed to generate {doc_type} content: Invalid response format")
-                
-            # Clean up the content before returning
-            return self._cleanup_content(content)
-            
-        except Exception as e:
-            raise DocumentGeneratorError(f"Error generating {doc_type}: {str(e)}")
+        prompt = f"""
+        You are a professional resume and cover letter generator. Your task is to generate both documents and return them in a specific JSON format.
 
-    async def generate_pdfs(self, resume_html: str, cover_letter_html: str, job_title: str) -> Tuple[Path, Path]:
+        IMPORTANT INSTRUCTIONS:
+        1. Your response must be ONLY valid JSON, nothing else
+        2. Do not include any explanations or markdown formatting
+        3. The JSON must follow this exact structure:
+        {{
+            "resume_html": "<complete HTML content>",
+            "cover_letter_html": "<complete HTML content>",
+            "applicant_name": "<full_name>",
+            "company_name_short": "<short_company_name>",
+            "job_title_short": "<short_job_title>",
+            "resume_title_short": "<resume_type>"
+        }}
+
+        FILENAME REQUIREMENTS:
+        - All short names must be at least 5 characters long
+        - Use only lowercase letters, numbers, and underscores
+        - No spaces, dots, or special characters
+        - No consecutive underscores
+        - For company_name_short:
+          * NEVER add words, prefixes, or suffixes (like 'co', 'inc', 'tech', etc.)
+          * ONLY remove words from the original name (like 'Ltd', 'Inc', 'Group', 'Technologies', etc.)
+          * If the shortened name would be too short, keep more of the original name
+          * Examples:
+            - "Lazer" -> "lazer" (add underscores if needed: "lazer_group")
+            - "Shopify Inc." -> "shopify"
+            - "Microsoft Corporation" -> "microsoft"
+        - Examples for other fields:
+          - job_title_short: "delivery_director" (from "Director of Delivery")
+          - resume_title_short: "senior_resume" (from "Senior Professional Resume")
+          - applicant_name: "jonathan_metillon" (from full name)
+
+        Use these templates and information:
+
+        Resume Template:
+        {resume_template}
+
+        Cover Letter Template:
+        {letter_template}
+
+        Job Details:
+        - Title: {form_data.get('job_title', '')}
+        - Company: {form_data.get('company_name', '')}
+        - Hiring Manager: {salutation} {hirer_name} if provided
+        {additional_context}
+
+        Current Date: {current_date}
+
+        {self._COMMON_INSTRUCTIONS}
+        """
+        return prompt
+
+    def generate_pdfs(self, resume_html: str, cover_letter_html: str, job_title: str) -> Tuple[Path, Path]:
         """Generate PDFs from HTML content"""
         try:
+            logger.info("Creating output directory...")
             output_dir = self._create_output_dir(job_title)
             paths = self._get_file_paths(output_dir, job_title)
+            logger.debug(f"Output paths: {paths}")
             
             # Save HTML files
-            await self._save_html_files(
+            logger.info("Saving HTML files...")
+            self._save_html_files(
                 paths['resume_html'], 
                 paths['letter_html'], 
                 resume_html, 
                 cover_letter_html
             )
+            logger.info("HTML files saved successfully")
             
             # Generate PDFs
-            await self._generate_pdf_files(paths)
+            logger.info("Starting PDF generation...")
+            self._generate_pdf_files(paths)
+            logger.info("PDF files generated successfully")
             
             return paths['resume_pdf'], paths['letter_pdf']
             
         except Exception as e:
-            logger.error(f"Error generating PDFs: {str(e)}")
+            logger.error(f"Error generating PDFs: {str(e)}", exc_info=True)
             raise DocumentGeneratorError(f"Failed to generate PDFs: {str(e)}")
 
-    async def _save_html_files(
+    def _save_html_files(
         self, resume_path: Path, letter_path: Path, 
         resume_html: str, cover_letter_html: str
     ) -> None:
@@ -172,23 +333,23 @@ class DocumentGenerator:
         except Exception as e:
             raise DocumentGeneratorError(f"Failed to save HTML files: {str(e)}")
 
-    async def _generate_pdf_files(self, paths: Dict[str, Path]) -> None:
+    def _generate_pdf_files(self, paths: Dict[str, Path]) -> None:
         """Generate PDF files from HTML files"""
         try:
-            async with async_playwright() as p:
-                browser = await p.chromium.launch()
-                page = await browser.new_page()
-                await page.set_viewport_size({"width": 1920, "height": 1080})
+            with sync_playwright() as p:
+                browser = p.chromium.launch()
+                page = browser.new_page()
+                page.set_viewport_size({"width": 1920, "height": 1080})
                 
-                async def generate_pdf(html_path: Path, pdf_path: Path):
+                def generate_pdf(html_path: Path, pdf_path: Path):
                     if not html_path.exists():
                         raise FileNotFoundError(f"HTML file not found: {html_path}")
                         
                     file_url = f"file://{html_path.absolute()}"
-                    await page.goto(file_url)
-                    await page.wait_for_load_state('networkidle')
-                    await page.wait_for_load_state('domcontentloaded')
-                    await page.pdf(
+                    page.goto(file_url)
+                    page.wait_for_load_state('networkidle')
+                    page.wait_for_load_state('domcontentloaded')
+                    page.pdf(
                         path=str(pdf_path),
                         format="A4",
                         print_background=True,
@@ -196,9 +357,9 @@ class DocumentGenerator:
                     )
                 
                 logger.info("Generating PDF files...")
-                await generate_pdf(paths['resume_html'], paths['resume_pdf'])
-                await generate_pdf(paths['letter_html'], paths['letter_pdf'])
-                await browser.close()
+                generate_pdf(paths['resume_html'], paths['resume_pdf'])
+                generate_pdf(paths['letter_html'], paths['letter_pdf'])
+                browser.close()
             
             if not paths['resume_pdf'].exists() or not paths['letter_pdf'].exists():
                 raise DocumentGeneratorError("Failed to generate PDF files: Files not created")
@@ -206,86 +367,40 @@ class DocumentGenerator:
         except Exception as e:
             raise DocumentGeneratorError(f"Failed to generate PDF files: {str(e)}")
 
-    def _create_resume_prompt(self, resume_template: str, form_data: Dict[str, str]) -> str:
-        """Create prompt for resume customization"""
-        additional_context = ""
-        if form_data.get('relevant_experience'):
-            additional_context = f"""
-            Additional Relevant Experience:
-            {form_data['relevant_experience']}
-            """
-            
-        return f"""
-        Given this resume template:
-        {resume_template}
+    def _validate_json_response(self, content: Dict) -> None:
+        """Validate the JSON response from AI API"""
+        missing_fields = self._REQUIRED_JSON_FIELDS - set(content.keys())
+        if missing_fields:
+            raise DocumentGeneratorError(
+                f"Invalid JSON response: Missing required fields: {missing_fields}"
+            )
         
-        And this job description:
-        {form_data['job_description']}
-        
-        Company Overview:
-        {form_data['company_overview']}
-        {additional_context}
-        
-        Instructions:
-        1. Analyze the job description, company overview, and any additional relevant experience carefully
-        2. IMPORTANT: Do NOT modify any HTML tags or structure - only update the text content within existing elements
-        3. Customize ONLY the text content to better match the job requirements while keeping all HTML intact
-        4. Highlight relevant skills and experience that match the job description
-        5. If additional relevant experience was provided, incorporate it naturally into the appropriate sections
-        6. Ensure the modifications are subtle and professional
-        7. Keep all existing sections and their HTML structure exactly as is
-        8. Add relevant keywords from the job description naturally within the existing text
-        
-        {self._COMMON_INSTRUCTIONS}
-        """
+        # Validate that no field is empty
+        empty_fields = [
+            field for field in self._REQUIRED_JSON_FIELDS 
+            if not content.get(field)
+        ]
+        if empty_fields:
+            raise DocumentGeneratorError(
+                f"Invalid JSON response: Empty values for fields: {empty_fields}"
+            )
 
-    def _create_cover_letter_prompt(self, resume_content: str, form_data: Dict[str, str]) -> str:
-        """Create prompt for cover letter generation"""
-        salutation = "Mr." if form_data['hirer_gender'] == 'male' else "Ms."
-        hirer_name = form_data.get('hirer_name', '')
-        current_date = datetime.now().strftime("%B %d, %Y")
+    def _validate_filename(self, filename: str) -> bool:
+        """Validate that a filename meets our requirements"""
+        # Must be at least 5 characters long
+        if len(filename) < 5:
+            return False
         
-        additional_context = ""
-        if form_data.get('relevant_experience'):
-            additional_context = f"""
-            Additional Context - Relevant Experience to Highlight:
-            {form_data['relevant_experience']}
-            """
+        # Must only contain lowercase letters, numbers, underscores, and dots
+        if not re.match(r'^[a-z0-9_\.]+$', filename):
+            return False
             
-        # Load the letter template from file
-        letter_template = self.letter_template.read_text()
+        # Must not start or end with a dot or underscore
+        if filename[0] in '._' or filename[-1] in '._':
+            return False
             
-        return f"""
-        Given this resume content:
-        {resume_content}
-        
-        Create a professional cover letter with the following details:
-        - Job Title: {form_data['job_title']}
-        - Company: {form_data['company_name']}
-        - Hiring Manager: {salutation} {hirer_name} if provided, otherwise omit the name
-        - Date: {current_date}
-        
-        Job Description:
-        {form_data['job_description']}
-        
-        Company Overview:
-        {form_data['company_overview']}
-        {additional_context}
-        
-        Instructions:
-        1. IMPORTANT: Use EXACTLY this HTML structure - do not modify any tags:
-        {letter_template}
-
-        2. Only modify:
-           - [DATE] with the provided date
-           - [RECIPIENT] with the hiring manager details
-           - The content within the letter-body div
-        3. Focus on matching the candidate's experience with the job requirements
-        4. If additional relevant experience was provided, emphasize it prominently in the letter
-        5. Demonstrate understanding of the company's values and culture
-        6. Keep the tone professional yet engaging
-        7. Include a strong call to action in the closing paragraph
-        8. Limit to 3-4 paragraphs
-        
-        {self._COMMON_INSTRUCTIONS}
-        """ 
+        # Must not contain consecutive dots or underscores
+        if '..' in filename or '__' in filename:
+            return False
+            
+        return True 

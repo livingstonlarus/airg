@@ -1,0 +1,111 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+    /* Flash Messages */
+    #flash-messages {
+        @apply fixed top-5 right-5 z-50 max-w-[400px] w-[90%] pointer-events-none flex flex-col gap-2;
+    }
+
+    .flash-message {
+        @apply p-4 my-4 rounded-lg opacity-100 transition-opacity duration-500 ease-in-out shadow-md text-base leading-relaxed block w-full max-w-[400px] z-50 pointer-events-auto;
+    }
+
+    .flash-message.info {
+        @apply bg-blue-100 text-blue-800 dark:bg-blue-800/30 dark:text-blue-200;
+    }
+
+    .flash-message.success {
+        @apply bg-green-100 text-green-800 dark:bg-green-800/30 dark:text-green-200;
+    }
+
+    .flash-message.error {
+        @apply bg-red-100 text-red-800 dark:bg-red-800/30 dark:text-red-200;
+    }
+
+    .flash-message.fade-out {
+        @apply opacity-0;
+    }
+
+    /* Form Elements */
+    .form-input {
+        @apply bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5;
+    }
+
+    .form-label {
+        @apply block text-gray-700 dark:text-gray-200 text-sm font-bold mb-2;
+    }
+
+    .form-hint {
+        @apply text-gray-600 dark:text-gray-400 text-xs italic mt-1;
+    }
+
+    /* Buttons Container */
+    .buttons-container {
+        @apply mt-8 space-y-8;
+    }
+
+    .download-buttons {
+        @apply space-y-2;
+    }
+
+    /* Buttons */
+    .btn {
+        @apply inline-flex items-center justify-center px-4 py-2 font-medium rounded-lg w-full;
+    }
+
+    .btn-primary {
+        @apply bg-blue-600 hover:bg-blue-700 text-white;
+    }
+
+    .btn-danger {
+        @apply bg-red-600 hover:bg-red-700 text-white mt-8;
+    }
+
+    /* Loading States */
+    .loading {
+        @apply opacity-50 pointer-events-none;
+    }
+
+    /* Layout */
+    .container-narrow {
+        @apply w-full max-w-[400px];
+    }
+
+    .nav-container {
+        @apply max-w-7xl mx-auto px-4;
+    }
+
+    .main-container {
+        @apply max-w-7xl mx-auto px-4 pt-4;
+    }
+
+    .form-container {
+        @apply w-full bg-white dark:bg-gray-800 shadow-md rounded px-8 pt-6 pb-8 mb-4;
+    }
+
+    /* Icons */
+    .icon {
+        @apply w-4 h-4 mr-2;
+    }
+
+    .spinner {
+        @apply animate-spin -ml-1 mr-3 h-5 w-5 text-white;
+    }
+}
+
+/* Dark mode styles */
+@media (prefers-color-scheme: dark) {
+    .flash-message.info {
+        @apply bg-blue-900 text-blue-200 border-blue-500;
+    }
+    
+    .flash-message.success {
+        @apply bg-green-900 text-green-200 border-green-500;
+    }
+    
+    .flash-message.error {
+        @apply bg-red-900 text-red-200 border-red-500;
+    }
+} 

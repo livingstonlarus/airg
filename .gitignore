@@ -65,4 +65,13 @@ gen_resume/*
 
 # Replit files
 .replit
-replit.nix 
+replit.nix
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build output
+airg/static/css/main.css 

@@ -13,13 +13,23 @@ The application currently uses Gemini 2.0 Flash Thinking model, which is free to
 ## Features
 
 - Customizes your resume and cover letter based on job description and company details
+- Optimize keywords, skills etc. for maximum scoring in ATS (Applicant Tracking Systems)
+- Tested with [Jobscan](https://www.jobscan.co)
 - Uses Gemini 2.0 Flash Thinking for enhanced reasoning and customization
-- Generates professional PDF documents with consistent styling
-- Real-time progress updates during document generation
-- Dark mode support (follows system preferences)
-- Generates both HTML and PDF versions of documents
 - Optional fields for hirer name and gender to personalize cover letters
 - Additional field for relevant experience to emphasize specific skills
+- Generates professional PDF documents with consistent styling
+- Generates both HTML and PDF versions of documents
+- Real-time progress updates during document generation
+- Dark mode support (follows system preferences)
+
+## Architecture
+
+- Built with Flask for simplicity and reliability
+- Server-Sent Events (SSE) for real-time progress updates
+- Synchronous document generation using Google's Gemini API
+- PDF generation using Playwright
+- Thread-safe message queue for progress updates
 
 ## Prerequisites
 
@@ -58,8 +68,11 @@ cp .env.example .env
 
 1. Run the application:
 ```bash
-# Use 'python3' on macOS/Linux/FreeBSD or 'python' on Windows
+# Development
 python3 app.py
+
+# Production
+gunicorn -w 4 -b 0.0.0.0:5000 'airg.app:app'
 ```
 
 2. Open your browser and navigate to `http://localhost:5000`
@@ -79,11 +92,57 @@ python3 app.py
 
 ## Development Status
 
-This project has been tested only locally, on macOS 15.2 (Sonoma). While it should work on other platforms, and maybe on the web,additional testing may be required.
+This project has been tested only locally, on macOS 15.2 (Sonoma). While it should work on other platforms, and maybe on the web, additional testing may be required.
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+### Development Setup
+
+1. Install Python dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+2. Install Node.js dependencies (required for CSS processing):
+```bash
+npm install
+```
+
+### CSS Development
+
+The project uses Tailwind CSS for styling. During development:
+
+1. Open two terminal windows
+2. In the first terminal, run the Flask application:
+```bash
+python3 -m flask --app airg.app run --debug --port 5000
+```
+
+3. In the second terminal, start the CSS watcher:
+```bash
+npm run watch
+```
+
+This setup will:
+- Automatically rebuild CSS when you make changes to any files containing Tailwind classes
+- Hot-reload the Flask application when you make Python changes
+- Serve the latest CSS to your browser (refresh required)
+
+### Building CSS for Production
+
+To build the minified CSS for production:
+```bash
+npm run build
+```
+
+### Project Structure
+
+- `airg/static/src/main.css`: Source CSS file with Tailwind directives
+- `airg/static/css/main.css`: Generated CSS file (ignored by git)
+- `tailwind.config.js`: Tailwind CSS configuration
+- `postcss.config.js`: PostCSS configuration for processing CSS
+
+Note: The `node_modules` directory and generated CSS are excluded from git via `.gitignore`.
 
 ## License
 

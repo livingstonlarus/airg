@@ -4,68 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Resume Generator</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'media'
-        }
-    </script>
-    <style>
-        .flash-message {
-            padding: 10px;
-            margin: 10px 0;
-            border-radius: 4px;
-            opacity: 1;
-            transition: opacity 0.5s ease-in-out;
-        }
-        .flash-message.info {
-            background-color: #e3f2fd;
-            color: #0d47a1;
-        }
-        .flash-message.success {
-            background-color: #e8f5e9;
-            color: #1b5e20;
-        }
-        .flash-message.error {
-            background-color: #ffebee;
-            color: #b71c1c;
-        }
-        .flash-message.fade-out {
-            opacity: 0;
-        }
-        #flash-messages {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 1000;
-            max-width: 400px;
-        }
-        .loading {
-            opacity: 0.5;
-            pointer-events: none;
-        }
-        @media (prefers-color-scheme: dark) {
-            .flash-message.info {
-                background-color: #1e3a8a;
-                color: #bfdbfe;
-            }
-            .flash-message.success {
-                background-color: #064e3b;
-                color: #a7f3d0;
-            }
-            .flash-message.error {
-                background-color: #7f1d1d;
-                color: #fecaca;
-            }
-        }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 </head>
 <body class="bg-gray-50 dark:bg-gray-900">
     <div id="flash-messages"></div>
 
     <nav class="bg-white dark:bg-gray-800 shadow-lg">
-        <div class="max-w-7xl mx-auto px-4">
+        <div class="nav-container">
             <div class="flex justify-center h-16">
                 <div class="flex">
                     <div class="flex-shrink-0 flex items-center">
@@ -76,7 +22,7 @@
         </div>
     </nav>
 
-    <main class="max-w-7xl mx-auto px-4 pt-4">
+    <main class="main-container">
         {% block content %}{% endblock %}
     </main>
 
@@ -84,203 +30,420 @@
         let eventSource = null;
 
         function showFlash(message, category = 'info') {
+            console.log(`Showing flash message: "${message}" (${category})`);
             const flashContainer = document.getElementById('flash-messages');
+            if (!flashContainer) {
+                console.error('Flash container not found!');
+                return;
+            }
+            
             const flashDiv = document.createElement('div');
             flashDiv.className = `flash-message ${category}`;
             flashDiv.textContent = message;
+            flashDiv.style.display = 'block';
+            flashDiv.style.opacity = '1';
+            console.log('Created flash element:', flashDiv);
+            
             flashContainer.appendChild(flashDiv);
+            console.log('Added flash to container');
 
+            // Remove after delay
             setTimeout(() => {
+                console.log(`Starting fade out for message: "${message}"`);
                 flashDiv.classList.add('fade-out');
                 setTimeout(() => {
-                    flashContainer.removeChild(flashDiv);
+                    if (flashDiv.parentNode === flashContainer) {
+                        flashContainer.removeChild(flashDiv);
+                    }
                 }, 500);
             }, 5000);
         }
 
-        function createDownloadButton(directory, filePath, text) {
+        function createDownloadButton(filePath, text) {
             const button = document.createElement('a');
-            button.href = `/resume_gen/${directory}/${filePath}`;
-            button.download = '';
-            button.className = 'w-full inline-flex items-center justify-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg';
+            // Get the stored response data to access the directory name
+            const storedResponse = window._lastFormResponse;
+            if (!storedResponse || !storedResponse.directory) {
+                console.error('No directory information found in stored response');
+                return null;
+            }
+            
+            // Construct the full path: resume_gen/directory/filename
+            const fullPath = `${storedResponse.directory}/${filePath}`;
+            button.href = `/download/${fullPath}`;
+            button.className = 'btn btn-primary';
             button.innerHTML = `
-                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
                 </svg>
                 ${text}
             `;
+            // Prevent page reload on click
+            button.addEventListener('click', async function(e) {
+                e.preventDefault();
+                try {
+                    const response = await fetch(this.href);
+                    if (!response.ok) throw new Error('Download failed');
+                    
+                    // Get the filename from the Content-Disposition header if present
+                    const contentDisposition = response.headers.get('Content-Disposition');
+                    const filenameMatch = contentDisposition && contentDisposition.match(/filename="(.+)"/);
+                    const filename = filenameMatch ? filenameMatch[1] : filePath.split('/').pop();
+                    
+                    // Create a blob from the PDF data and trigger download
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                } catch (error) {
+                    console.error('Download error:', error);
+                    showFlash('Failed to download file. Please try again.', 'error');
+                }
+            });
             return button;
         }
 
-        function createDownloadSection(directory, resumePath, coverLetterPath) {
-            const section = document.createElement('div');
-            section.id = 'download-section';
-            section.className = 'mt-8 mb-8 flex flex-col items-center';
+        function createDownloadSection(resumePath, coverLetterPath) {
+            console.log('Creating download section with paths:', { resumePath, coverLetterPath });
+            
+            // Create main container
             const buttonsContainer = document.createElement('div');
-            // Create a nested container for download buttons
-            const downloadButtons = document.createElement('div');
-            downloadButtons.className = 'w-full space-y-4';  // Closer spacing between download buttons
-            buttonsContainer.className = 'w-full max-w-[400px] space-y-8';  // Keep larger spacing between groups
+            buttonsContainer.className = 'container-narrow mx-auto buttons-container';
+            
+            // Create download buttons group
+            const downloadButtonsGroup = document.createElement('div');
+            downloadButtonsGroup.className = 'download-buttons';
             
             // Create download buttons
-            const resumeBtn = createDownloadButton(directory, resumePath, 'Download Resume');
-            const coverLetterBtn = createDownloadButton(directory, coverLetterPath, 'Download Cover Letter');
+            const resumeBtn = createDownloadButton(resumePath, 'Download Resume');
+            const coverLetterBtn = createDownloadButton(coverLetterPath, 'Download Cover Letter');
             
-            // Add download buttons to their container
-            downloadButtons.appendChild(resumeBtn);
-            downloadButtons.appendChild(coverLetterBtn);
+            // Add download buttons to their group
+            downloadButtonsGroup.appendChild(resumeBtn);
+            downloadButtonsGroup.appendChild(coverLetterBtn);
             
             // Create reset button
             const resetBtn = document.createElement('button');
-            resetBtn.className = 'w-full inline-flex items-center justify-center px-4 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700';
+            resetBtn.className = 'btn btn-danger';
             resetBtn.innerHTML = `
-                <span class="material-icons mr-2">refresh</span>
+                <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
                 RESET
             `;
-            resetBtn.onclick = function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-                
-                // Reset form fields
-                const form = document.getElementById('jobForm');
-                Array.from(form.elements).forEach(element => {
-                    if (element.type !== 'submit') {
-                        element.value = '';
-                    }
-                });
-                
-                // Remove download section
-                const downloadSection = document.getElementById('download-section');
-                if (downloadSection) {
-                    downloadSection.remove();
-                }
-                
-                // Smooth scroll to top
-                window.scrollTo({
-                    top: 0,
-                    behavior: 'smooth'
-                });
-                
-                return false;
-            };
+            resetBtn.onclick = resetForm;
             
-            // Add buttons to container
-            buttonsContainer.appendChild(downloadButtons);  // Add the download buttons group
+            // Add all groups to main container
+            buttonsContainer.appendChild(downloadButtonsGroup);
             buttonsContainer.appendChild(resetBtn);
             
-            // Add container to section
-            section.appendChild(buttonsContainer);
-            
-            return section;
+            // Find the download buttons container and insert the buttons
+            const downloadContainer = document.getElementById('download-buttons-container');
+            if (downloadContainer) {
+                // Clear any existing content
+                downloadContainer.innerHTML = '';
+                downloadContainer.appendChild(buttonsContainer);
+                
+                // Scroll to the download section with smooth animation
+                setTimeout(() => {
+                    downloadContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 100);
+            } else {
+                console.error('Download buttons container not found');
+            }
+        }
+
+        function resetForm() {
+            console.log('Resetting form');
+            const form = document.getElementById('jobForm');
+            if (form) {
+                form.reset();
+                
+                // Clear download buttons
+                const downloadContainer = document.getElementById('download-buttons-container');
+                if (downloadContainer) {
+                    downloadContainer.innerHTML = '';
+                }
+                
+                // Clear flash messages
+                const flashContainer = document.getElementById('flash-messages');
+                if (flashContainer) {
+                    flashContainer.innerHTML = '';
+                }
+                
+                // Scroll to top with smooth animation
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                
+                // Restart EventSource
+                startEventStream();
+            }
         }
 
         function startEventStream() {
+            // Clean up any existing connection first
             if (eventSource) {
+                console.log('Closing existing EventSource connection');
                 eventSource.close();
+                eventSource = null;
             }
+            
+            console.log('Starting new EventSource connection');
             eventSource = new EventSource('/stream');
             
-            eventSource.onmessage = function(event) {
+            let pingTimeout = null;
+            const PING_TIMEOUT = 10000; // 10 seconds
+            let reconnectAttempt = 0;
+            const MAX_RECONNECT_DELAY = 5000;
+            const MAX_RECONNECT_ATTEMPTS = 5;
+            
+            function resetPingTimeout() {
+                if (pingTimeout) clearTimeout(pingTimeout);
+                pingTimeout = setTimeout(() => {
+                    console.log('No ping received for 10 seconds, reconnecting...');
+                    if (eventSource && eventSource.readyState !== EventSource.CLOSED) {
+                        eventSource.close();
+                        eventSource = null;
+                    }
+                    reconnect();
+                }, PING_TIMEOUT);
+            }
+            
+            function reconnect() {
+                // Don't reconnect if we're unloading the page
+                if (window._isUnloading) {
+                    console.log('Page is unloading, skipping reconnection');
+                    return;
+                }
+                
+                if (reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) {
+                    console.log('Max reconnection attempts reached');
+                    showFlash('Connection lost. Please refresh the page.', 'error');
+                    return;
+                }
+                
+                const delay = Math.min(1000 * Math.pow(1.5, reconnectAttempt), MAX_RECONNECT_DELAY);
+                console.log(`Attempting to reconnect in ${delay}ms (attempt ${reconnectAttempt + 1})`);
+                setTimeout(() => {
+                    reconnectAttempt++;
+                    startEventStream();
+                }, delay);
+            }
+            
+            eventSource.onmessage = async function(event) {
                 try {
                     const data = JSON.parse(event.data);
-                    if (data.type !== 'ping') {
+                    if (data.type === 'connected') {
+                        console.log('SSE connection established');
+                        reconnectAttempt = 0; // Reset reconnect counter on successful connection
+                        resetPingTimeout();
+                    } else if (data.type === 'ping') {
+                        // Only log ping every 10 seconds to reduce noise
+                        if (!window._lastPingLog || (Date.now() - window._lastPingLog) > 10000) {
+                            console.log('Received ping');
+                            window._lastPingLog = Date.now();
+                        }
+                        resetPingTimeout();
+                    } else {
+                        console.log('Processing message:', data);
+                        
+                        // Ensure messages are shown with a slight delay between them
+                        if (window._lastMessageTimestamp) {
+                            const timeSinceLastMessage = Date.now() - window._lastMessageTimestamp;
+                            if (timeSinceLastMessage < 300) { // Reduced from 500ms to 300ms
+                                await new Promise(resolve => setTimeout(resolve, 300 - timeSinceLastMessage));
+                            }
+                        }
+                        window._lastMessageTimestamp = Date.now();
+                        
                         showFlash(data.message, data.category);
+                        resetPingTimeout();
+                        
+                        // If this is a success message about PDFs, show the download buttons and close connection
+                        if (data.category === 'success' && data.message.includes('PDF files generated successfully')) {
+                            console.log('Document generation complete');
+                            
+                            // Wait a bit to ensure form response is stored
+                            await new Promise(resolve => setTimeout(resolve, 100));
+                            
+                            // Get the stored response data from the form submission
+                            const storedResponse = window._lastFormResponse;
+                            console.log('Stored response:', storedResponse);
+                            
+                            if (!storedResponse) {
+                                console.error('No stored response data found');
+                                showFlash('Document generation failed: no response data', 'error');
+                                return;
+                            }
+                            
+                            if (!storedResponse.resume_pdf || !storedResponse.cover_letter_pdf || !storedResponse.directory) {
+                                console.error('Invalid stored response:', storedResponse);
+                                showFlash('Document generation failed: missing file paths', 'error');
+                                return;
+                            }
+                            
+                            console.log('Creating download section with files:', storedResponse);
+                            try {
+                                // Add a slight delay before showing download buttons
+                                setTimeout(() => {
+                                    createDownloadSection(
+                                        storedResponse.resume_pdf,
+                                        storedResponse.cover_letter_pdf
+                                    );
+                                }, 500);
+                                
+                                // Close the EventSource connection after a delay
+                                setTimeout(() => {
+                                    if (eventSource) {
+                                        console.log('Generation complete, closing EventSource connection');
+                                        eventSource.close();
+                                        eventSource = null;
+                                    }
+                                }, 1000);
+                            } catch (error) {
+                                console.error('Error creating download section:', error);
+                                showFlash('Failed to prepare download buttons: ' + error.message, 'error');
+                            }
+                        }
                     }
                 } catch (error) {
-                    console.error('Error parsing event data:', error);
+                    console.error('Error parsing event data:', error, 'Raw data:', event.data);
                 }
             };
             
-            eventSource.onerror = function() {
-                if (eventSource) {
-                    eventSource.close();
-                    eventSource = null;
+            eventSource.onerror = function(error) {
+                console.error('EventSource error:', error, 'ReadyState:', eventSource.readyState);
+                
+                // Only attempt reconnection if the connection is closed and we're not in the middle of document generation
+                // and we haven't just completed generation
+                if (eventSource.readyState === EventSource.CLOSED && 
+                    !window._documentsGenerating && 
+                    !window._documentsComplete) {
+                    console.log('Connection closed, checking if reconnection is needed...');
+                    reconnect();
                 }
+            };
+            
+            eventSource.onopen = function() {
+                console.log('EventSource connection opened, readyState:', eventSource.readyState);
+                // Reset reconnect counter on successful connection
+                reconnectAttempt = 0;
             };
         }
 
         document.addEventListener('DOMContentLoaded', function() {
+            // Initialize flags
+            window._isUnloading = false;
+            window._documentsGenerating = false;
+            window._documentsComplete = false;
+            window._lastMessageTimestamp = 0;
+            
+            startEventStream();
+            
+            // Clean up EventSource before page unload
+            window.addEventListener('beforeunload', function() {
+                window._isUnloading = true;
+                if (eventSource) {
+                    console.log('Page unloading, closing EventSource connection cleanly');
+                    eventSource.close();
+                    eventSource = null;
+                }
+            });
+            
+            // Handle form submission
             const form = document.getElementById('jobForm');
-            const submitBtn = document.getElementById('submitBtn');
-
             if (form) {
                 form.addEventListener('submit', async function(e) {
                     e.preventDefault();
+                    console.log('Form submitted');
                     
-                    // Cleanup any existing state
-                    if (eventSource) {
-                        eventSource.close();
-                        eventSource = null;
-                    }
+                    // Reset flags
+                    window._documentsComplete = false;
+                    window._lastMessageTimestamp = 0;
                     
-                    const existingDownloadSection = document.querySelector('.mt-8');
-                    if (existingDownloadSection) {
-                        existingDownloadSection.remove();
-                    }
-                    
-                    const flashContainer = document.getElementById('flash-messages');
-                    flashContainer.innerHTML = '';
-                    
-                    startEventStream();
-                    
-                    form.classList.add('loading');
-                    submitBtn.disabled = true;
-                    const btnText = submitBtn.querySelector('span');
-                    const btnSpinner = submitBtn.querySelector('#submitSpinner');
-                    const btnIcon = submitBtn.querySelector('#submitIcon');
-                    btnText.textContent = 'Generating...';
-                    btnSpinner.classList.remove('hidden');
-                    btnIcon.classList.add('hidden');
-
+                    // Clear any previous stored response
+                    window._lastFormResponse = null;
                     try {
+                        localStorage.removeItem('lastFormResponse');
+                    } catch (e) {
+                        console.warn('Could not clear localStorage:', e);
+                    }
+                    
+                    // Show instructing AI message
+                    showFlash('Instructing AI...', 'info');
+                    
+                    // Disable submit button and show loading state
+                    const submitBtn = document.querySelector('button[type="submit"]');
+                    const submitSpinner = document.getElementById('submitSpinner');
+                    const submitIcon = document.getElementById('submitIcon');
+                    const submitText = document.getElementById('submitText');
+                    
+                    if (submitBtn) {
+                        submitBtn.disabled = true;
+                        if (submitSpinner) submitSpinner.classList.remove('hidden');
+                        if (submitIcon) submitIcon.classList.add('hidden');
+                        if (submitText) submitText.textContent = 'Generating Documents...';
+                    }
+                    
+                    try {
+                        window._documentsGenerating = true;
+                        
+                        const formData = new FormData(this);
                         const response = await fetch('/', {
                             method: 'POST',
-                            body: new FormData(form),
-                            headers: {
-                                'X-Requested-With': 'XMLHttpRequest'
-                            }
+                            body: formData
                         });
-
-                        if (!response.ok) {
-                            throw new Error(`HTTP error! status: ${response.status}`);
-                        }
-
+                        
                         const data = await response.json();
-
-                        if (data.success && data.resume_path && data.cover_letter_path && data.directory) {
-                            const downloadSection = createDownloadSection(
-                                data.directory,
-                                data.resume_path,
-                                data.cover_letter_path
-                            );
-                            form.appendChild(downloadSection);
-                            
-                            setTimeout(() => {
-                                window.scrollTo({
-                                    top: document.documentElement.scrollHeight,
-                                    behavior: 'smooth'
-                                });
-                            }, 100);
-                        } else if (!data.success && data.messages) {
-                            data.messages.forEach(msg => {
-                                showFlash(msg.message, msg.category);
-                            });
+                        
+                        if (!response.ok) {
+                            throw new Error(data.error || 'An error occurred');
                         }
+                        
+                        // Check for empty or invalid response data
+                        if (!data || typeof data !== 'object') {
+                            throw new Error('Empty response from AI');
+                        }
+                        
+                        if (!data.resume_pdf || !data.cover_letter_pdf || !data.directory) {
+                            throw new Error('Incomplete response from AI: missing document paths');
+                        }
+                        
+                        // Store the response data in window and localStorage for redundancy
+                        console.log('Storing form response:', data);
+                        window._lastFormResponse = data;
+                        try {
+                            localStorage.setItem('lastFormResponse', JSON.stringify(data));
+                        } catch (e) {
+                            console.warn('Could not store response in localStorage:', e);
+                        }
+                        
+                        console.log('Form submission successful, stored response:', data);
                     } catch (error) {
-                        showFlash('An unexpected error occurred. Please try again.', 'error');
                         console.error('Error:', error);
-                    } finally {
-                        // Cleanup
-                        form.classList.remove('loading');
-                        submitBtn.disabled = false;
-                        btnText.textContent = 'Generate Documents';
-                        btnSpinner.classList.add('hidden');
-                        btnIcon.classList.remove('hidden');
-                        if (eventSource) {
-                            eventSource.close();
-                            eventSource = null;
+                        showFlash(error.message || 'An unexpected error occurred', 'error');
+                        
+                        // Clear any stored response data since we had an error
+                        window._lastFormResponse = null;
+                        try {
+                            localStorage.removeItem('lastFormResponse');
+                        } catch (e) {
+                            console.warn('Could not clear localStorage:', e);
                         }
+                    } finally {
+                        // Reset submit button
+                        if (submitBtn) {
+                            submitBtn.disabled = false;
+                            if (submitSpinner) submitSpinner.classList.add('hidden');
+                            if (submitIcon) submitIcon.classList.remove('hidden');
+                            if (submitText) submitText.textContent = 'Generate Documents';
+                        }
+                        window._documentsGenerating = false;
                     }
                 });
             }
