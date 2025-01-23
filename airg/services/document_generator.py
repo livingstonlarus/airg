@@ -205,6 +205,9 @@ class DocumentGenerator:
             {form_data['relevant_experience']}
             """
             
+        # Load the letter template from file
+        letter_template = self.letter_template.read_text()
+            
         return f"""
         Given this resume content:
         {resume_content}
@@ -224,52 +227,7 @@ class DocumentGenerator:
         
         Instructions:
         1. IMPORTANT: Use EXACTLY this HTML structure - do not modify any tags:
-           <!DOCTYPE html>
-           <html lang="en">
-           <head>
-               <meta charset="UTF-8">
-               <meta name="viewport" content="width=device-width, initial-scale=1.0">
-               <title>Cover Letter</title>
-               <link rel="stylesheet" href="/resume/style.css">
-               <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-           </head>
-           <body>
-               <div class="grid-container letter">
-                   <header class="header">
-                       <div class="contact-header">
-                           <h1>John Doe</h1>
-                           <h2>Chief Strategy and Innovation Officer</h2>
-                           <div class="contact-info">
-                               <span class="material-icons">location_on</span>
-                               <span class="label">Location:</span>
-                               <a href="https://www.google.com/maps/place/Lyon/">City, Country</a>
-                           </div>
-                           <div class="contact-info">
-                               <span class="material-icons">email</span>
-                               <span class="label">Email:</span>
-                               <a href="mailto:user@example.com">user@example.com</a>
-                           </div>
-                           <div class="contact-info">
-                               <span class="material-icons">phone</span>
-                               <span class="label">Phone:</span>
-                               <a href="tel:+XX-XXX-XXX-XXX">+33 626-688-372</a>
-                           </div>
-                       </div>
-                   </header>
-                   
-                   <main class="letter-content">
-                       <div class="letter-date">[DATE]</div>
-                       <div class="letter-recipient">
-                           <p>[RECIPIENT]</p>
-                       </div>
-                       
-                       <div class="letter-body">
-                           <!-- Letter content here -->
-                       </div>
-                   </main>
-               </div>
-           </body>
-           </html>
+        {letter_template}
 
         2. Only modify:
            - [DATE] with the provided date
