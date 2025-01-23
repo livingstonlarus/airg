@@ -257,7 +257,7 @@ class DocumentGenerator:
         - Examples for other fields:
           - job_title_short: "delivery_director" (from "Director of Delivery")
           - resume_title_short: "senior_resume" (from "Senior Professional Resume")
-          - applicant_name: "jonathan_metillon" (from full name)
+          - applicant_name: "john_doe" (from full name)
 
         Use these templates and information:
 
