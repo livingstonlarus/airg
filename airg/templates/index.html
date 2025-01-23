@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="flex justify-center">
+    <form id="jobForm" method="POST" class="w-full bg-white dark:bg-gray-800 shadow-md rounded px-8 pt-6 pb-8 mb-4">
+        {{ form.csrf_token }}
+        
+        <div class="mb-4">
+            <label class="block text-gray-700 dark:text-gray-200 text-sm font-bold mb-2" for="job_title">
+                Job Title
+            </label>
+            {{ form.job_title(class="bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5") }}
+        </div>
+        
+        <div class="mb-4">
+            <label class="block text-gray-700 dark:text-gray-200 text-sm font-bold mb-2" for="company_name">
+                Company Name
+            </label>
+            {{ form.company_name(class="bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5") }}
+        </div>
+        
+        <div class="mb-4">
+            <label class="block text-gray-700 dark:text-gray-200 text-sm font-bold mb-2" for="hirer_name">
+                Hirer Name (optional)
+            </label>
+            {{ form.hirer_name(class="bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5") }}
+        </div>
+        
+        <div class="mb-4">
+            <label class="block text-gray-700 dark:text-gray-200 text-sm font-bold mb-2" for="hirer_gender">
+                Hirer Gender (optional)
+            </label>
+            {{ form.hirer_gender(class="bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5") }}
+        </div>
+        
+        <div class="mb-4">
+            <label class="block text-gray-700 dark:text-gray-200 text-sm font-bold mb-2" for="job_description">
+                Job Description
+            </label>
+            {{ form.job_description(class="bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5", rows="6") }}
+        </div>
+        
+        <div class="mb-4">
+            <label class="block text-gray-700 dark:text-gray-200 text-sm font-bold mb-2" for="company_overview">
+                Company Overview
+            </label>
+            {{ form.company_overview(class="bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5", rows="4") }}
+        </div>
+        
+        <div class="mb-6">
+            <label class="block text-gray-700 dark:text-gray-200 text-sm font-bold mb-2" for="relevant_experience">
+                Additional Relevant Experience (optional)
+            </label>
+            {{ form.relevant_experience(class="bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5", rows="4") }}
+            <p class="text-gray-600 dark:text-gray-400 text-xs italic mt-1">Add any specific experience or skills relevant to this job that you want to emphasize.</p>
+        </div>
+        
+        <div class="flex justify-center">
+            <div class="w-full max-w-[400px]">
+                <button id="submitBtn" type="submit" class="inline-flex items-center justify-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg w-full">
+                    <svg id="submitSpinner" class="hidden animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <svg id="submitIcon" class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                    <span>Generate Documents</span>
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %} 

@@ -1,0 +1,12 @@
+# Core web framework and extensions
+flask==3.0.2              # Web framework for building the application
+flask-wtf==1.2.1          # Flask integration with WTForms for form handling
+jinja2==3.1.3             # Template engine for Flask
+asgiref==3.7.2            # Async support for Flask
+
+# AI and document generation
+google-genai==0.5.0       # Google's Gemini AI API client
+playwright==1.42.0        # Browser automation for PDF generation
+
+# Environment and utilities
+python-dotenv==1.0.1      # Load environment variables from .env file

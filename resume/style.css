@@ -1,0 +1,250 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Merriweather&display=swap");
+
+:root {
+    --color-background: hsl(30, 38%, 93%);  /* Converted to HSL */
+    --color-border: hsl(30, 38%, 90%);  /* Darkened version of the background color */
+    --color-text: hsl(0, 0%, 0%);
+    --color-text-muted: hsl(0, 0%, 40%);  /* Converted to HSL */
+
+    --font-size-base: 12px;
+    --font-size-large: 14px;
+    --font-size-heading: 24px;
+    --font-size-icons: 16px;
+
+    --spacing-xxs: 2px;
+    --spacing-xs: 4px;
+    --spacing-sm: 8px;
+    --spacing-md: 12px;
+    --spacing-base: 16px;
+    --spacing-lg: 24px;
+    --spacing-xl: 32px;
+
+    --border-width: 2px;
+    --line-height: 1.3;
+}
+
+/* Base styles */
+html,
+body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+}
+
+body {
+    background-color: var(--color-background);
+    font-family: "Inter", sans-serif;
+    font-size: var(--font-size-base);
+    line-height: var(--line-height);
+}
+
+/* Layout */
+.grid-container {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    grid-template-rows: auto 1fr;
+    min-height: 100%;
+}
+
+/* Header */
+.header {
+    grid-column: span 2;
+    border-bottom: var(--border-width) solid var(--color-border);
+    padding: var(--spacing-base);
+    padding-bottom: var(--spacing-sm);
+}
+
+.header h1 {
+    font-family: "Merriweather", serif;
+    font-size: var(--font-size-heading);
+    margin: 0 0 var(--spacing-sm) 0;
+}
+
+.header h2 {
+    font-family: "Merriweather", serif;
+    font-size: var(--font-size-large);
+    margin: 0 0 var(--spacing-sm) 0;
+}
+
+.summary {
+    margin: 0 0 var(--spacing-base) 0;
+}
+
+/* Primary Column (Left side) */
+.primary-column {
+    padding: 0;
+    border-right: var(--border-width) solid var(--color-border);
+    grid-row: 2;
+}
+
+.primary-section {
+    padding: var(--spacing-base);
+    border-bottom: var(--border-width) solid var(--color-border);
+}
+
+.primary-section:last-child {
+    border-bottom: none;
+}
+
+.primary-section h3 {
+    font-size: var(--font-size-large);
+    font-weight: 600;
+    margin: 0 0 var(--spacing-sm) 0;
+}
+
+/* Secondary Column (Right side) */
+.secondary-column {
+    padding: var(--spacing-base);
+    grid-row: 2;
+}
+
+.secondary-column h2 {
+    font-size: var(--font-size-large);
+    font-weight: 600;
+    margin: 0 0 var(--spacing-lg) 0;
+}
+
+/* Contact info */
+.contact-info {
+    display: grid;
+    grid-template-columns: 24px 55px 1fr; /* Slightly reduced label column */
+    align-items: center;
+    gap: 4px;
+    margin: 0 0 var(--spacing-xs) 0;
+}
+
+.contact-info:last-child {
+    margin-bottom: 0;
+}
+
+.contact-info span.material-icons {
+    grid-column: 1;
+}
+
+.contact-info .label {
+    grid-column: 2;
+}
+
+.contact-info a {
+    grid-column: 3;
+}
+
+.material-icons {
+    font-size: var(--font-size-icons);
+    color: var(--color-text-muted);
+}
+
+/* Experience Items */
+.experience-item {
+    margin-bottom: var(--spacing-lg);
+}
+
+.experience-item:last-child {
+    margin-bottom: 0;
+}
+
+.experience-item h3 {
+    font-size: var(--font-size-large);
+    font-weight: 600;
+    margin: 0 0 var(--spacing-xxs) 0;
+}
+
+.company-info {
+    margin: 0 0 var(--spacing-xs) 0;
+}
+
+/* Lists */
+ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+li {
+    margin-bottom: var(--spacing-xxs);
+}
+
+li:last-child {
+    margin-bottom: 0;
+}
+
+/* Links */
+a {
+    color: inherit;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+    text-decoration-color: var(--color-text-muted);
+}
+
+/* Typography */
+strong {
+    font-weight: 600;
+}
+
+/* Cover Letter Specific Styles */
+.grid-container.letter {
+    display: block !important;  /* Force override grid layout */
+    grid-template-columns: none;  /* Remove grid columns completely */
+    max-width: 800px;
+    margin: 0 auto;
+    padding: var(--spacing-xl);
+}
+
+.letter .header {
+    grid-column: auto;  /* Reset grid column */
+    border-bottom: none;
+    margin-bottom: var(--spacing-xl);
+    padding: 0;
+}
+
+.letter .contact-header {
+    width: 100%;
+    max-width: none;
+}
+
+.letter-content {
+    padding: 0;
+    margin-top: var(--spacing-xl);
+}
+
+.letter-date {
+    font-size: var(--font-size-base);
+    margin-bottom: var(--spacing-xl);
+}
+
+.letter-recipient {
+    margin-bottom: var(--spacing-lg);
+}
+
+.letter-recipient p {
+    margin: 0;
+}
+
+.letter-body {
+    font-size: var(--font-size-base);
+    line-height: 1.6;
+}
+
+.letter-body p {
+    margin-bottom: var(--spacing-lg);
+}
+
+.letter-body p:last-child {
+    margin-bottom: 0;
+}
+
+/* Print styles */
+@media print {
+    body {
+        background: none;
+    }
+
+    .grid-container {
+        width: 210mm;
+        height: 297mm;
+    }
+
+    .container {
+        padding: var(--spacing-lg);
+    }
+}

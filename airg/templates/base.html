@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Resume Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'media'
+        }
+    </script>
+    <style>
+        .flash-message {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            opacity: 1;
+            transition: opacity 0.5s ease-in-out;
+        }
+        .flash-message.info {
+            background-color: #e3f2fd;
+            color: #0d47a1;
+        }
+        .flash-message.success {
+            background-color: #e8f5e9;
+            color: #1b5e20;
+        }
+        .flash-message.error {
+            background-color: #ffebee;
+            color: #b71c1c;
+        }
+        .flash-message.fade-out {
+            opacity: 0;
+        }
+        #flash-messages {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            max-width: 400px;
+        }
+        .loading {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+        @media (prefers-color-scheme: dark) {
+            .flash-message.info {
+                background-color: #1e3a8a;
+                color: #bfdbfe;
+            }
+            .flash-message.success {
+                background-color: #064e3b;
+                color: #a7f3d0;
+            }
+            .flash-message.error {
+                background-color: #7f1d1d;
+                color: #fecaca;
+            }
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+</head>
+<body class="bg-gray-50 dark:bg-gray-900">
+    <div id="flash-messages"></div>
+
+    <nav class="bg-white dark:bg-gray-800 shadow-lg">
+        <div class="max-w-7xl mx-auto px-4">
+            <div class="flex justify-center h-16">
+                <div class="flex">
+                    <div class="flex-shrink-0 flex items-center">
+                        <h1 class="text-xl font-bold text-gray-900 dark:text-white">AI Resume Generator</h1>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 pt-4">
+        {% block content %}{% endblock %}
+    </main>
+
+    <script>
+        let eventSource = null;
+
+        function showFlash(message, category = 'info') {
+            const flashContainer = document.getElementById('flash-messages');
+            const flashDiv = document.createElement('div');
+            flashDiv.className = `flash-message ${category}`;
+            flashDiv.textContent = message;
+            flashContainer.appendChild(flashDiv);
+
+            setTimeout(() => {
+                flashDiv.classList.add('fade-out');
+                setTimeout(() => {
+                    flashContainer.removeChild(flashDiv);
+                }, 500);
+            }, 5000);
+        }
+
+        function createDownloadButton(directory, filePath, text) {
+            const button = document.createElement('a');
+            button.href = `/resume_gen/${directory}/${filePath}`;
+            button.download = '';
+            button.className = 'w-full inline-flex items-center justify-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg';
+            button.innerHTML = `
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                </svg>
+                ${text}
+            `;
+            return button;
+        }
+
+        function createDownloadSection(directory, resumePath, coverLetterPath) {
+            const section = document.createElement('div');
+            section.id = 'download-section';
+            section.className = 'mt-8 mb-8 flex flex-col items-center';
+            const buttonsContainer = document.createElement('div');
+            // Create a nested container for download buttons
+            const downloadButtons = document.createElement('div');
+            downloadButtons.className = 'w-full space-y-4';  // Closer spacing between download buttons
+            buttonsContainer.className = 'w-full max-w-[400px] space-y-8';  // Keep larger spacing between groups
+            
+            // Create download buttons
+            const resumeBtn = createDownloadButton(directory, resumePath, 'Download Resume');
+            const coverLetterBtn = createDownloadButton(directory, coverLetterPath, 'Download Cover Letter');
+            
+            // Add download buttons to their container
+            downloadButtons.appendChild(resumeBtn);
+            downloadButtons.appendChild(coverLetterBtn);
+            
+            // Create reset button
+            const resetBtn = document.createElement('button');
+            resetBtn.className = 'w-full inline-flex items-center justify-center px-4 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700';
+            resetBtn.innerHTML = `
+                <span class="material-icons mr-2">refresh</span>
+                RESET
+            `;
+            resetBtn.onclick = function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                
+                // Reset form fields
+                const form = document.getElementById('jobForm');
+                Array.from(form.elements).forEach(element => {
+                    if (element.type !== 'submit') {
+                        element.value = '';
+                    }
+                });
+                
+                // Remove download section
+                const downloadSection = document.getElementById('download-section');
+                if (downloadSection) {
+                    downloadSection.remove();
+                }
+                
+                // Smooth scroll to top
+                window.scrollTo({
+                    top: 0,
+                    behavior: 'smooth'
+                });
+                
+                return false;
+            };
+            
+            // Add buttons to container
+            buttonsContainer.appendChild(downloadButtons);  // Add the download buttons group
+            buttonsContainer.appendChild(resetBtn);
+            
+            // Add container to section
+            section.appendChild(buttonsContainer);
+            
+            return section;
+        }
+
+        function startEventStream() {
+            if (eventSource) {
+                eventSource.close();
+            }
+            eventSource = new EventSource('/stream');
+            
+            eventSource.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type !== 'ping') {
+                        showFlash(data.message, data.category);
+                    }
+                } catch (error) {
+                    console.error('Error parsing event data:', error);
+                }
+            };
+            
+            eventSource.onerror = function() {
+                if (eventSource) {
+                    eventSource.close();
+                    eventSource = null;
+                }
+            };
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.getElementById('jobForm');
+            const submitBtn = document.getElementById('submitBtn');
+
+            if (form) {
+                form.addEventListener('submit', async function(e) {
+                    e.preventDefault();
+                    
+                    // Cleanup any existing state
+                    if (eventSource) {
+                        eventSource.close();
+                        eventSource = null;
+                    }
+                    
+                    const existingDownloadSection = document.querySelector('.mt-8');
+                    if (existingDownloadSection) {
+                        existingDownloadSection.remove();
+                    }
+                    
+                    const flashContainer = document.getElementById('flash-messages');
+                    flashContainer.innerHTML = '';
+                    
+                    startEventStream();
+                    
+                    form.classList.add('loading');
+                    submitBtn.disabled = true;
+                    const btnText = submitBtn.querySelector('span');
+                    const btnSpinner = submitBtn.querySelector('#submitSpinner');
+                    const btnIcon = submitBtn.querySelector('#submitIcon');
+                    btnText.textContent = 'Generating...';
+                    btnSpinner.classList.remove('hidden');
+                    btnIcon.classList.add('hidden');
+
+                    try {
+                        const response = await fetch('/', {
+                            method: 'POST',
+                            body: new FormData(form),
+                            headers: {
+                                'X-Requested-With': 'XMLHttpRequest'
+                            }
+                        });
+
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+
+                        const data = await response.json();
+
+                        if (data.success && data.resume_path && data.cover_letter_path && data.directory) {
+                            const downloadSection = createDownloadSection(
+                                data.directory,
+                                data.resume_path,
+                                data.cover_letter_path
+                            );
+                            form.appendChild(downloadSection);
+                            
+                            setTimeout(() => {
+                                window.scrollTo({
+                                    top: document.documentElement.scrollHeight,
+                                    behavior: 'smooth'
+                                });
+                            }, 100);
+                        } else if (!data.success && data.messages) {
+                            data.messages.forEach(msg => {
+                                showFlash(msg.message, msg.category);
+                            });
+                        }
+                    } catch (error) {
+                        showFlash('An unexpected error occurred. Please try again.', 'error');
+                        console.error('Error:', error);
+                    } finally {
+                        // Cleanup
+                        form.classList.remove('loading');
+                        submitBtn.disabled = false;
+                        btnText.textContent = 'Generate Documents';
+                        btnSpinner.classList.add('hidden');
+                        btnIcon.classList.remove('hidden');
+                        if (eventSource) {
+                            eventSource.close();
+                            eventSource = null;
+                        }
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html> 
