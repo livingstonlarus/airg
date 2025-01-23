@@ -34,7 +34,8 @@ ENV/
 
 # Application specific
 .env
-resume_gen/
+resume_gen/*
+!resume_gen/.gitkeep
 resume/resume.html
 resume/letter.html
 
@@ -58,8 +59,6 @@ coverage.xml
 cover/
 
 # Generated content
-resume_gen/*
-!resume_gen/.gitkeep
 gen_resume/*
 !gen_resume/.gitkeep
 

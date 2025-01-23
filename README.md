@@ -1,6 +1,6 @@
 # AIRG
 
-**AI Resume Generator** (v1.1)
+**AI Resume Generator** (v1.2)
 
 Say "AIR-G" or "A.I.R.G" as you see fit.
 
@@ -90,6 +90,10 @@ gunicorn -w 4 -b 0.0.0.0:5000 'airg.app:app'
 
 5. Download the generated resume and cover letter in PDF format
 
+## Document History
+
+All generated documents are archived in the `resume_gen` directory, organized by timestamp and job details, in both PDF and HTML formats. This allows you to keep track of your application history and reuse documents if needed.
+
 ## Development Status
 
 This project has been tested only locally, on macOS 15.2 (Sonoma). While it should work on other platforms, and maybe on the web, additional testing may be required.
@@ -154,4 +158,4 @@ Attribution to Livingston Larus is appreciated. Please include the following not
 
 "Copyright 2024 Livingston Larus"
 
-For more information, visit [Livingston Larus](https://livingstonlarus.com). 
+For more information, visit [Livingston Larus](https://livingstonlarus.com).
