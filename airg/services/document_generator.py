@@ -1,130 +1,189 @@
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Optional
 from google import genai
-from google.genai import types
 from playwright.async_api import async_playwright
 import logging
-from flask import flash
 from datetime import datetime
 import re
 
 logger = logging.getLogger(__name__)
 
+class DocumentGeneratorError(Exception):
+    """Base exception for document generator errors"""
+    pass
+
 class DocumentGenerator:
+    # Common prompt instructions
+    _COMMON_INSTRUCTIONS = """
+        IMPORTANT: 
+        - Return ONLY the raw HTML content
+        - Use EXACTLY the HTML structure provided
+        - Do NOT modify ANY HTML tags or attributes
+        - Do NOT wrap response in markdown code blocks
+        - Start directly with <!DOCTYPE html>
+    """
+
     def __init__(self, api_key: str):
+        if not api_key:
+            raise ValueError("API key is required")
+            
         self.client = genai.Client(api_key=api_key, http_options={'api_version': 'v1alpha'})
-        self.config = {'thinking_config': {'include_thoughts': True}}
         self.base_dir = Path("resume_gen")
         self.base_dir.mkdir(exist_ok=True)
         self.resume_template = Path("resume/resume.html")
         self.letter_template = Path("resume/letter.html")
+        
+        # Validate template files exist
+        if not self.resume_template.exists():
+            raise FileNotFoundError(f"Resume template not found: {self.resume_template}")
+        if not self.letter_template.exists():
+            raise FileNotFoundError(f"Cover letter template not found: {self.letter_template}")
+
+    def _sanitize_filename(self, text: str) -> str:
+        """Create a safe filename from text"""
+        return re.sub(r'[^\w\s-]', '', text).strip().replace(' ', '_')
+
+    def _cleanup_content(self, content: str) -> str:
+        """Clean up the content returned by the AI"""
+        # Remove markdown code block markers if present
+        content = re.sub(r'^```html\s*\n', '', content)
+        content = re.sub(r'\n```\s*$', '', content)
+        # Remove any html comments that might be present
+        content = re.sub(r'<!--.*?-->\n?', '', content, flags=re.DOTALL)
+        return content.strip()
 
     def _create_output_dir(self, job_title: str) -> Path:
         """Create a timestamped output directory for this generation"""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        safe_job_title = re.sub(r'[^\w\s-]', '', job_title).strip().replace(' ', '_')
+        safe_job_title = self._sanitize_filename(job_title)
         dir_name = f"{timestamp}_{safe_job_title}"
         output_dir = self.base_dir / dir_name
         output_dir.mkdir(exist_ok=True)
         return output_dir
 
-    async def generate_documents(self, resume_content: str, form_data: Dict[str, str]) -> Tuple[str, str]:
+    def _get_file_paths(self, output_dir: Path, job_title: str) -> Dict[str, Path]:
+        """Get all file paths for a job"""
+        safe_job_title = self._sanitize_filename(job_title)
+        return {
+            'resume_html': output_dir / f"Resume_{safe_job_title}.html",
+            'resume_pdf': output_dir / f"Resume_{safe_job_title}.pdf",
+            'letter_html': output_dir / f"Cover_Letter_{safe_job_title}.html",
+            'letter_pdf': output_dir / f"Cover_Letter_{safe_job_title}.pdf"
+        }
+
+    async def generate_documents(self, form_data: Dict[str, str]) -> Tuple[str, str]:
         """Generate customized resume and cover letter using Gemini API"""
         try:
+            # Load resume template
+            resume_template = self.resume_template.read_text()
+            
             # Generate customized resume
             logger.info("Generating customized resume with Gemini...")
-            resume_prompt = self._create_resume_prompt(resume_content, form_data)
-            resume_response = self.client.models.generate_content(
-                model='gemini-2.0-flash-thinking-exp',
-                contents=resume_prompt
+            customized_resume = await self._generate_content(
+                self._create_resume_prompt(resume_template, form_data),
+                "resume"
             )
-            
-            if not resume_response.candidates[0].content.parts:
-                raise ValueError("Failed to generate resume content")
-            
-            # Get the non-thought part of the response
-            customized_resume = next(
-                (part.text for part in resume_response.candidates[0].content.parts 
-                 if not getattr(part, 'thought', False)), 
-                None
-            )
-            
-            if not customized_resume:
-                raise ValueError("No valid resume content in response")
             
             # Generate cover letter
             logger.info("Generating cover letter with Gemini...")
-            cover_letter_prompt = self._create_cover_letter_prompt(resume_content, form_data)
-            cover_letter_response = self.client.models.generate_content(
-                model='gemini-2.0-flash-thinking-exp',
-                contents=cover_letter_prompt
+            cover_letter = await self._generate_content(
+                self._create_cover_letter_prompt(customized_resume, form_data),
+                "cover letter"
             )
-            
-            if not cover_letter_response.candidates[0].content.parts:
-                raise ValueError("Failed to generate cover letter content")
-            
-            # Get the non-thought part of the response
-            cover_letter = next(
-                (part.text for part in cover_letter_response.candidates[0].content.parts 
-                 if not getattr(part, 'thought', False)), 
-                None
-            )
-            
-            if not cover_letter:
-                raise ValueError("No valid cover letter content in response")
             
             logger.info("Documents generated successfully")
             return customized_resume, cover_letter
             
         except Exception as e:
             logger.error(f"Error generating documents: {str(e)}")
-            raise
+            raise DocumentGeneratorError(f"Failed to generate documents: {str(e)}")
+
+    async def _generate_content(self, prompt: str, doc_type: str) -> str:
+        """Generate content using Gemini API"""
+        try:
+            response = self.client.models.generate_content(
+                model='gemini-2.0-flash-thinking-exp',
+                contents=prompt
+            )
+            
+            if not response.candidates[0].content.parts:
+                raise DocumentGeneratorError(f"Failed to generate {doc_type} content: No response from API")
+            
+            content = next(
+                (part.text for part in response.candidates[0].content.parts 
+                 if not getattr(part, 'thought', False)), 
+                None
+            )
+            
+            if not content:
+                raise DocumentGeneratorError(f"Failed to generate {doc_type} content: Invalid response format")
+                
+            # Clean up the content before returning
+            return self._cleanup_content(content)
+            
+        except Exception as e:
+            raise DocumentGeneratorError(f"Error generating {doc_type}: {str(e)}")
 
     async def generate_pdfs(self, resume_html: str, cover_letter_html: str, job_title: str) -> Tuple[Path, Path]:
-        """Generate PDFs using Playwright"""
+        """Generate PDFs from HTML content"""
         try:
-            logger.info("Starting PDF generation...")
-            
-            # Create output directory
             output_dir = self._create_output_dir(job_title)
+            paths = self._get_file_paths(output_dir, job_title)
             
-            # Create base filenames
-            safe_job_title = re.sub(r'[^\w\s-]', '', job_title).strip().replace(' ', '_')
-            base_resume_name = f"Resume_{safe_job_title}"
-            base_cover_letter_name = f"Cover_Letter_{safe_job_title}"
+            # Save HTML files
+            await self._save_html_files(
+                paths['resume_html'], 
+                paths['letter_html'], 
+                resume_html, 
+                cover_letter_html
+            )
             
+            # Generate PDFs
+            await self._generate_pdf_files(paths)
+            
+            return paths['resume_pdf'], paths['letter_pdf']
+            
+        except Exception as e:
+            logger.error(f"Error generating PDFs: {str(e)}")
+            raise DocumentGeneratorError(f"Failed to generate PDFs: {str(e)}")
+
+    async def _save_html_files(
+        self, resume_path: Path, letter_path: Path, 
+        resume_html: str, cover_letter_html: str
+    ) -> None:
+        """Save HTML content to files"""
+        try:
             # Read CSS content
             css_path = Path('resume/style.css')
+            if not css_path.exists():
+                raise FileNotFoundError("CSS file not found")
+                
             css_content = css_path.read_text()
             
-            # Save HTML files with embedded CSS
             def prepare_html(html_content: str) -> str:
                 html_content = html_content.replace('<link rel="stylesheet" href="/resume/style.css">', '')
                 css_tag = f'<style>{css_content}</style>'
                 return html_content.replace('</head>', f'{css_tag}</head>')
             
-            resume_html = prepare_html(resume_html)
-            cover_letter_html = prepare_html(cover_letter_html)
+            # Save HTML files with embedded CSS
+            resume_path.write_text(prepare_html(resume_html))
+            letter_path.write_text(prepare_html(cover_letter_html))
             
-            resume_html_path = output_dir / f"{base_resume_name}.html"
-            cover_letter_html_path = output_dir / f"{base_cover_letter_name}.html"
-            
-            # Write HTML files
-            resume_html_path.write_text(resume_html)
-            cover_letter_html_path.write_text(cover_letter_html)
-            logger.info("HTML files prepared with embedded CSS")
-            
-            # Define PDF paths
-            resume_pdf_path = output_dir / f"{base_resume_name}.pdf"
-            cover_letter_pdf_path = output_dir / f"{base_cover_letter_name}.pdf"
-            
+        except Exception as e:
+            raise DocumentGeneratorError(f"Failed to save HTML files: {str(e)}")
+
+    async def _generate_pdf_files(self, paths: Dict[str, Path]) -> None:
+        """Generate PDF files from HTML files"""
+        try:
             async with async_playwright() as p:
                 browser = await p.chromium.launch()
                 page = await browser.new_page()
                 await page.set_viewport_size({"width": 1920, "height": 1080})
                 
-                # Function to generate PDF
                 async def generate_pdf(html_path: Path, pdf_path: Path):
+                    if not html_path.exists():
+                        raise FileNotFoundError(f"HTML file not found: {html_path}")
+                        
                     file_url = f"file://{html_path.absolute()}"
                     await page.goto(file_url)
                     await page.wait_for_load_state('networkidle')
@@ -136,24 +195,18 @@ class DocumentGenerator:
                         margin={"top": "0", "right": "0", "bottom": "0", "left": "0"}
                     )
                 
-                # Generate PDFs
                 logger.info("Generating PDF files...")
-                await generate_pdf(resume_html_path, resume_pdf_path)
-                await generate_pdf(cover_letter_html_path, cover_letter_pdf_path)
+                await generate_pdf(paths['resume_html'], paths['resume_pdf'])
+                await generate_pdf(paths['letter_html'], paths['letter_pdf'])
                 await browser.close()
-                
-            # Verify files were created
-            if not resume_pdf_path.exists() or not cover_letter_pdf_path.exists():
-                raise ValueError("Failed to generate PDF files")
-                
-            logger.info("PDF generation completed")
-            return resume_pdf_path, cover_letter_pdf_path
+            
+            if not paths['resume_pdf'].exists() or not paths['letter_pdf'].exists():
+                raise DocumentGeneratorError("Failed to generate PDF files: Files not created")
             
         except Exception as e:
-            logger.error(f"Error generating PDFs: {str(e)}")
-            raise
+            raise DocumentGeneratorError(f"Failed to generate PDF files: {str(e)}")
 
-    def _create_resume_prompt(self, resume_content: str, form_data: Dict[str, str]) -> str:
+    def _create_resume_prompt(self, resume_template: str, form_data: Dict[str, str]) -> str:
         """Create prompt for resume customization"""
         additional_context = ""
         if form_data.get('relevant_experience'):
@@ -163,8 +216,8 @@ class DocumentGenerator:
             """
             
         return f"""
-        Given this resume content:
-        {resume_content}
+        Given this resume template:
+        {resume_template}
         
         And this job description:
         {form_data['job_description']}
@@ -183,13 +236,7 @@ class DocumentGenerator:
         7. Keep all existing sections and their HTML structure exactly as is
         8. Add relevant keywords from the job description naturally within the existing text
         
-        IMPORTANT: 
-        - Return ONLY the raw HTML content
-        - Do NOT modify ANY HTML tags or attributes
-        - Only change the text between tags
-        - Keep all HTML structure exactly as provided
-        - Do NOT wrap response in markdown code blocks
-        - Start directly with <!DOCTYPE html>
+        {self._COMMON_INSTRUCTIONS}
         """
 
     def _create_cover_letter_prompt(self, resume_content: str, form_data: Dict[str, str]) -> str:
@@ -240,11 +287,5 @@ class DocumentGenerator:
         7. Include a strong call to action in the closing paragraph
         8. Limit to 3-4 paragraphs
         
-        IMPORTANT: 
-        - Return ONLY the raw HTML content
-        - Use EXACTLY the HTML structure provided
-        - Only modify the marked placeholders and letter body content
-        - Do NOT modify any other HTML elements or attributes
-        - Do NOT wrap response in markdown code blocks
-        - Start directly with <!DOCTYPE html>
+        {self._COMMON_INSTRUCTIONS}
         """ 

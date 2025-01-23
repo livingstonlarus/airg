@@ -1,6 +1,6 @@
 # AIRG
 
-**AI Resume Generator** (v1.0)
+**AI Resume Generator** (v1.1)
 
 Say "AIR-G" or "A.I.R.G" as you see fit.
 

@@ -1,10 +1,10 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Merriweather&display=swap");
 
 :root {
-    --color-background: hsl(30, 38%, 93%);  /* Converted to HSL */
-    --color-border: hsl(30, 38%, 90%);  /* Darkened version of the background color */
+    --color-background: hsl(30, 38%, 93%);
+    --color-border: hsl(30, 38%, 90%);
     --color-text: hsl(0, 0%, 0%);
-    --color-text-muted: hsl(0, 0%, 40%);  /* Converted to HSL */
+    --color-text-muted: hsl(0, 0%, 40%);
 
     --font-size-base: 12px;
     --font-size-large: 14px;
@@ -107,7 +107,7 @@ body {
 /* Contact info */
 .contact-info {
     display: grid;
-    grid-template-columns: 24px 55px 1fr; /* Slightly reduced label column */
+    grid-template-columns: 24px 55px 1fr;
     align-items: center;
     gap: 4px;
     margin: 0 0 var(--spacing-xs) 0;
@@ -239,7 +239,7 @@ strong {
         background: none;
     }
 
-    .grid-container {
+    .grid-container {  /* A4 format */
         width: 210mm;
         height: 297mm;
     }
