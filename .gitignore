@@ -1,3 +1,10 @@
+# Application specific
+.env
+resume/resume.html
+resume/letter.html
+resume_gen/*
+!resume_gen/.gitkeep
+
 # Python
 __pycache__/
 *.py[cod]
@@ -31,12 +38,8 @@ ENV/
 .vscode/
 *.swp
 *.swo
-
-# Application specific
-.env
-resume_gen/
-resume/resume.html
-resume/letter.html
+.replit
+replit.nix 
 
 # OS specific
 .DS_Store
@@ -56,13 +59,3 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
-
-# Generated content
-resume_gen/*
-!resume_gen/.gitkeep
-gen_resume/*
-!gen_resume/.gitkeep
-
-# Replit files
-.replit
-replit.nix 
