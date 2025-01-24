@@ -54,12 +54,19 @@ cp .env.example .env
    - Set `GEMINI_API_KEY` with your API key from Google AI Studio
    - Generate a secure random string for `SECRET_KEY` (you can use `python -c "import secrets; print(secrets.token_hex())"`)
 
+6. Copy the example HTML files:
+```bash
+cp resume/resume.example.html resume/resume.html
+cp resume/letter.example.html resume/letter.html
+```
+
+And edit your resume and letter HTML files to your liking.
+
 ## Usage
 
 1. Run the application:
 ```bash
-# Use 'python3' on macOS/Linux/FreeBSD or 'python' on Windows
-python3 app.py
+python app.py
 ```
 
 2. Open your browser and navigate to `http://localhost:5000`
